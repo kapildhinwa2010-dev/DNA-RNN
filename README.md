@@ -1,41 +1,55 @@
 # DNA-RNN
 
-Encode/decode codec for weight matrices (genes).
+[![CI](https://github.com/kapildhinwa2010-dev/DNA-RNN/actions/workflows/ci.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/DNA-RNN/actions/workflows/ci.yml)
+[![CI](https://github.com/kapildhinwa2010-dev/DNA-RNN/actions/workflows/codeql.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/DNA-RNN/actions/workflows/codeql.yml)
+
+DNA quantized codec tuned for recurrent weights: per-gate encoding (LSTM/GRU/vanilla).
 
 **Part of the [Kapildhinwa2010-dev Toolkit](https://github.com/kapildhinwa2010-dev/Kapildhinwa2010-dev).**
 
-![CI](https://github.com/kapildhinwa2010-dev/DNA-RNN/actions/workflows/ci.yml/badge.svg)
-![CodeQL](https://github.com/kapildhinwa2010-dev/DNA-RNN/actions/workflows/codeql.yml/badge.svg)
-![Python](https://img.shields.io/badge/python-3.9%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+## What it does
 
-## ✨ Features
+DNA-RNN is the recurrent-specialized member of the DNA codec family
+(lineage: the private DNA repository). encode()/decode() quantize a
+float matrix into a GeneRecord; the RNN-specific part is
+encode_gates()/decode_gates(): stacked gate rows (LSTM=4, GRU=3,
+vanilla RNN=1) are split and encoded gate-by-gate, each with its own
+scale - lower error than one global scale because gates have
+different value ranges.
 
-- `encode()` / `decode()` quantized codec (1-16 bits)
-- `GeneRecord` serializes to plain dicts
-- `codec_stats()` reports ratio and max error
-
-## 📦 Install
+## Install
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 🚀 Quick start
+## Quick start
 
 ```python
-from dna_rnn import encode, decode, codec_stats
+from dna_rnn import encode_gates, decode_gates
 
-record = encode(W, bits=8)
-print(codec_stats(W, bits=8)['ratio'])
+records = encode_gates(W_ih, cell="lstm", bits=8)  # rows divisible by 4
+restored = decode_gates(records)
 ```
 
-## 🧪 Tests
+## API
 
-```bash
-pytest tests/ -v
-```
+- encode(matrix, bits) / decode(record) / codec_stats(matrix, bits)
+- encode_gates(matrix, cell, bits) - cell: "lstm", "gru" or "rhnn"
+- decode_gates(records) - vstack back to the full matrix
+- encode_heads_compat(matrix, num_blocks, bits) - generic row split
 
-## 📄 License
+## Honest results and limitations
 
-MIT — see [LICENSE](LICENSE).
+- Lossy: error equals the quantization step of each gate block.
+- Row count must be divisible by the gate count; gate order is the
+  PyTorch stacking order and is not verified against your layer.
+- "Ratio" in codec_stats() is float32-bytes / encoded-bytes
+  ARITHMETIC - it counts stored codes, not a real serialized file.
+- No per-layer fitting: the reserv.dean-part-2 log records that
+  generated-weight reconstructions of trained models were not usable
+  without per-layer fitting.
+
+## License
+
+MIT - see [LICENSE](LICENSE).
