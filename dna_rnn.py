@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["encode", "decode", "GeneRecord", "codec_stats"]
+__all__ = [
+    "encode", "decode", "GeneRecord", "codec_stats",
+    "encode_gates", "decode_gates",
+]
 
 
 class GeneRecord:
@@ -80,3 +83,48 @@ def codec_stats(matrix: np.ndarray, bits: int = 8) -> dict:
         "max_abs_error": float(np.abs(matrix - decode(record)).max()),
         "bits": bits,
     }
+
+
+GATES = {"lstm": 4, "gru": 3, "rhnn": 1}
+
+
+def encode_gates(matrix: np.ndarray, cell: str = "lstm", bits: int = 8) -> list:
+    """Encode a recurrent gate weight matrix gate-by-gate.
+
+    LSTM/GRU layers stack their gates (input, forget, cell, output for
+    LSTM; reset, update, candidate for GRU) along the row dimension.
+    Gates have different value ranges, so encoding each gate block with
+    its own scale gives lower reconstruction error than one global scale.
+
+    Args:
+        matrix: 2-D weight matrix whose row count is divisible by the
+            gate count (LSTM=4, GRU=3, vanilla RNN=1).
+        cell: "lstm", "gru" or "rhnn".
+
+    Returns: List of GeneRecord, one per gate.
+    """
+    key = cell.lower()
+    if key not in GATES:
+        raise ValueError("cell must be one of: " + ", ".join(sorted(GATES)))
+    return encode_heads_compat(matrix, GATES[key], bits=bits)
+
+
+def decode_gates(records: list) -> np.ndarray:
+    """Reconstruct a gate weight matrix from encode_gates output."""
+    if not records:
+        raise ValueError("records must be non-empty")
+    return np.vstack([decode(rec) for rec in records])
+
+
+def encode_heads_compat(matrix: np.ndarray, num_blocks: int, bits: int = 8) -> list:
+    """Split rows into equal blocks and encode each with its own scale."""
+    matrix = np.asarray(matrix, dtype=np.float64)
+    if matrix.ndim != 2:
+        raise ValueError("matrix must be 2-D")
+    if num_blocks < 1 or matrix.shape[0] % num_blocks != 0:
+        raise ValueError("block count must divide the number of rows")
+    rows = matrix.shape[0] // num_blocks
+    return [
+        encode(matrix[i * rows:(i + 1) * rows, :], bits=bits)
+        for i in range(num_blocks)
+    ]
